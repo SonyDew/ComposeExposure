@@ -44,4 +44,4 @@ python -m unittest discover -s tests -v
 - Preserved service names such as `on`, `off`, `yes`, and `no` as strings.
 - Reported interpolated network modes as unresolved rather than silently ignoring them.
 - Rejected malformed IPv6 host-binding brackets and non-string network modes.
-- Ran 23 unit tests on Python 3.13.5 with PyYAML 6.0.3; all passed. No Docker daemon or runtime integration tests were used.
+- Ran 25 unit tests on Python 3.13.5 with PyYAML 6.0.3; all passed. No Docker daemon or runtime integration tests were used.
