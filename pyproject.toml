@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compose-exposure"
+version = "0.1.0"
+description = "Static Docker Compose port exposure inspection"
+requires-python = ">=3.10"
+dependencies = ["PyYAML>=6.0,<7"]
+license = "MIT"
+
+[project.scripts]
+compose-exposure = "compose_exposure.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["compose_exposure*"]
