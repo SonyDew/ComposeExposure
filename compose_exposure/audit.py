@@ -40,6 +40,24 @@ def _construct_mapping(loader: StrictLoader, node: yaml.MappingNode) -> dict:
     return result
 
 
+# Compose uses YAML 1.2 scalar rules. PyYAML defaults to YAML 1.1, where
+# "on" becomes True and unquoted "1:20" becomes the integer 80.
+StrictLoader.yaml_implicit_resolvers = {
+    first: [item for item in resolvers if item[0] not in (
+        "tag:yaml.org,2002:bool", "tag:yaml.org,2002:int"
+    )]
+    for first, resolvers in yaml.SafeLoader.yaml_implicit_resolvers.items()
+}
+StrictLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:bool",
+    re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$"),
+    list("tTfF"),
+)
+StrictLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:int",
+    re.compile(r"^[-+]?(?:0|[1-9][0-9]*)$"),
+    list("-+0123456789"),
+)
 StrictLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping)
 
 
@@ -113,13 +131,22 @@ def _validate_port(value: str, *, allow_empty: bool = False) -> str:
     return "-".join(str(p) for p in bounds)
 
 
+def _normalize_bind(bind: str) -> str:
+    if "[" in bind or "]" in bind:
+        if not (bind.startswith("[") and bind.endswith("]")
+                and bind.count("[") == 1 and bind.count("]") == 1):
+            raise ComposeError(f"Invalid brackets in host binding: {bind!r}")
+        return bind[1:-1]
+    return bind
+
+
 def _scope(bind: str) -> str:
     if bind == "*":
         return "all"
     if _INTERPOLATION.search(bind):
         return "unknown"
     try:
-        addr = ipaddress.ip_address(bind.strip("[]"))
+        addr = ipaddress.ip_address(bind)
     except ValueError:
         return "unknown"
     if addr.is_unspecified:
@@ -146,7 +173,7 @@ def _port_record(service: str, entry: Any) -> Exposure:
             bind, published, target = parts
             if not bind:
                 bind = "*"
-            bind = bind.strip("[]")
+            bind = _normalize_bind(bind)
         target = _validate_port(target)
         published = _validate_port(published, allow_empty=True) if published != "dynamic" else published
         mode = ""
@@ -154,7 +181,7 @@ def _port_record(service: str, entry: Any) -> Exposure:
         if "target" not in entry:
             raise ComposeError(f"Service {service!r}: long port entry needs target")
         bind_value = entry.get("host_ip")
-        bind = str(bind_value).strip("[]") if bind_value is not None else "*"
+        bind = _normalize_bind(str(bind_value)) if bind_value is not None else "*"
         published_value = entry.get("published")
         published = (
             _validate_port(str(published_value)) if published_value is not None else "dynamic"
@@ -185,8 +212,13 @@ def inspect(path: str | Path) -> list[Exposure]:
     for name, config in services.items():
         if not isinstance(name, str) or not isinstance(config, dict):
             raise ComposeError(f"{source}: invalid service definition: {name!r}")
-        if config.get("network_mode") == "host":
+        network_mode = config.get("network_mode")
+        if network_mode is not None and not isinstance(network_mode, str):
+            raise ComposeError(f"{source}: service {name!r} network_mode must be a string")
+        if network_mode == "host":
             records.add(Exposure(name, "host-network", "host", "", "", "", "host", ""))
+        elif network_mode and _INTERPOLATION.search(network_mode):
+            records.add(Exposure(name, "network-mode-unknown", network_mode, "", "", "", "unknown", ""))
         ports = config.get("ports", [])
         if ports is None:
             ports = []
