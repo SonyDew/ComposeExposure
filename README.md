@@ -2,7 +2,7 @@
 
 Static inspection of Docker Compose port publishing and host networking. No Docker daemon is required.
 
-**Status:** In Development — Day 1 of SonyDev GitHub Marathon, October 27, 2026.
+**Status:** Completed MVP — Day 1 of SonyDev GitHub Marathon, October 27, 2026.
 
 ## Install
 
@@ -38,10 +38,11 @@ This is a static per-file audit, not an evaluation of the effective Docker Compo
 python -m unittest discover -s tests -v
 ```
 
-## Development report — 2026-10-27, afternoon
+## Development report — 2026-10-27
 
-- Fixed unquoted short ports such as `1:20` being parsed as a YAML 1.1 sexagesimal integer.
-- Preserved service names such as `on`, `off`, `yes`, and `no` as strings.
-- Reported interpolated network modes as unresolved rather than silently ignoring them.
-- Rejected malformed IPv6 host-binding brackets and non-string network modes.
-- Ran 25 unit tests on Python 3.13.5 with PyYAML 6.0.3; all passed. No Docker daemon or runtime integration tests were used.
+- Corrected YAML 1.1 boolean and sexagesimal parsing for Compose values.
+- Reported interpolated network modes as unresolved.
+- Rejected malformed IPv6 bindings, non-string long-form host bindings, and oversized numeric ports.
+- Removed YAML source excerpts from parser errors to avoid exposing file contents.
+- Passed 32 unit tests on Python 3.13.5 with PyYAML 6.0.3. Built a wheel and launched the installed CLI.
+- Docker runtime integration was not tested. This remains a per-file static inspection tool.
