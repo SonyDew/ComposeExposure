@@ -57,6 +57,15 @@ class EdgeCaseTests(unittest.TestCase):
         self.assertEqual(result[0].scope, "loopback")
         self.assertEqual(result[0].bind, "::1")
 
+    def test_unsafe_yaml_tags_rejected(self):
+        with self.assertRaises(ComposeError):
+            self.scan('services:\\n  web:\\n    ports: !!python/object/apply:os.system ["echo no"]\\n')
+
+    def test_scan_does_not_modify_input(self):
+        original = 'services:\\n  web:\\n    ports: ["127.0.0.1:8080:80"]\\n'
+        self.scan(original)
+        self.assertEqual(self.path.read_text(encoding="utf-8"), original)
+
     def test_cli_json_and_nonlocal_failure(self):
         self.path.write_text("services:\n  web:\n    network_mode: ${NETWORK_MODE:-host}\n", encoding="utf-8")
         out = io.StringIO()
