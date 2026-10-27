@@ -12,6 +12,8 @@ from .audit import ComposeError, Exposure, compare, inspect, risky
 def _describe(record: Exposure) -> str:
     if record.kind == "host-network":
         return f"{record.service}: host network (scope: host)"
+    if record.kind == "network-mode-unknown":
+        return f"{record.service}: unresolved network mode {record.bind} (scope: unknown)"
     return (
         f"{record.service}: {record.bind}:{record.published} -> "
         f"{record.target}/{record.protocol} (scope: {record.scope})"
