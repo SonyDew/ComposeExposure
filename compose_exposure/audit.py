@@ -28,7 +28,7 @@ def _construct_mapping(loader: StrictLoader, node: yaml.MappingNode) -> dict:
         key = loader.construct_object(key_node, deep=True)
         try:
             if key in explicit:
-                raise ComposeError(f"Duplicate YAML key: {key!r}")
+                raise ComposeError("Duplicate YAML key")
             explicit.add(key)
         except TypeError as exc:
             raise ComposeError("YAML mapping keys must be hashable") from exc
@@ -77,7 +77,7 @@ class Exposure:
 
 
 _INTERPOLATION = re.compile(r"\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*")
-_PORT_NUMBER = re.compile(r"^\d+(?:-\d+)?$")
+_PORT_NUMBER = re.compile(r"^[0-9]+(?:-[0-9]+)?$")
 
 
 def _split_short(value: str) -> list[str]:
@@ -102,7 +102,7 @@ def _split_short(value: str) -> list[str]:
             elif ch == "]":
                 bracket -= 1
                 if bracket < 0:
-                    raise ComposeError(f"Invalid bracket in port: {value!r}")
+                    raise ComposeError("Invalid bracket in port")
             elif ch == ":" and bracket == 0:
                 parts.append("".join(buf))
                 buf.clear()
@@ -111,10 +111,10 @@ def _split_short(value: str) -> list[str]:
         buf.append(ch)
         i += 1
     if bracket or substitution:
-        raise ComposeError(f"Unclosed bracket or substitution in port: {value!r}")
+        raise ComposeError("Unclosed bracket or substitution in port")
     parts.append("".join(buf))
     if len(parts) > 3:
-        raise ComposeError(f"Invalid short port syntax: {value!r}")
+        raise ComposeError("Invalid short port syntax")
     return parts
 
 
@@ -124,10 +124,13 @@ def _validate_port(value: str, *, allow_empty: bool = False) -> str:
     if _INTERPOLATION.search(value):
         return value
     if not _PORT_NUMBER.fullmatch(value):
-        raise ComposeError(f"Invalid port number or range: {value!r}")
-    bounds = [int(p) for p in value.split("-")]
+        raise ComposeError("Invalid port number or range")
+    digits = [part.lstrip("0") or "0" for part in value.split("-")]
+    if any(len(part) > 5 for part in digits):
+        raise ComposeError("Port outside 1–65535")
+    bounds = [int(part) for part in digits]
     if any(p < 1 or p > 65535 for p in bounds) or bounds[-1] < bounds[0]:
-        raise ComposeError(f"Port outside 1–65535 or reversed range: {value!r}")
+        raise ComposeError("Port outside 1–65535 or reversed range")
     return "-".join(str(p) for p in bounds)
 
 
@@ -135,7 +138,7 @@ def _normalize_bind(bind: str) -> str:
     if "[" in bind or "]" in bind:
         if not (bind.startswith("[") and bind.endswith("]")
                 and bind.count("[") == 1 and bind.count("]") == 1):
-            raise ComposeError(f"Invalid brackets in host binding: {bind!r}")
+            raise ComposeError("Invalid brackets in host binding")
         return bind[1:-1]
     return bind
 
@@ -181,7 +184,9 @@ def _port_record(service: str, entry: Any) -> Exposure:
         if "target" not in entry:
             raise ComposeError(f"Service {service!r}: long port entry needs target")
         bind_value = entry.get("host_ip")
-        bind = _normalize_bind(str(bind_value)) if bind_value is not None else "*"
+        if bind_value is not None and not isinstance(bind_value, str):
+            raise ComposeError("Long port host_ip must be a string")
+        bind = _normalize_bind(bind_value) if bind_value is not None else "*"
         published_value = entry.get("published")
         published = (
             _validate_port(str(published_value)) if published_value is not None else "dynamic"
@@ -190,9 +195,9 @@ def _port_record(service: str, entry: Any) -> Exposure:
         proto = str(entry.get("protocol", "tcp"))
         mode = str(entry.get("mode", ""))
     else:
-        raise ComposeError(f"Service {service!r}: unsupported port entry: {entry!r}")
+        raise ComposeError(f"Service {service!r}: unsupported port entry")
     if proto not in ("tcp", "udp", "sctp") and not _INTERPOLATION.search(proto):
-        raise ComposeError(f"Service {service!r}: invalid protocol: {proto!r}")
+        raise ComposeError(f"Service {service!r}: invalid protocol")
     return Exposure(service, "port", bind, published, target, proto, _scope(bind), mode)
 
 
@@ -201,8 +206,16 @@ def inspect(path: str | Path) -> list[Exposure]:
     source = Path(path)
     try:
         doc = yaml.load(source.read_text(encoding="utf-8"), Loader=StrictLoader)
-    except (OSError, UnicodeError, yaml.YAMLError) as exc:
-        raise ComposeError(f"Cannot read {source}: {exc}") from exc
+    except ComposeError:
+        raise
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        location = f" at line {mark.line + 1}, column {mark.column + 1}" if mark else ""
+        raise ComposeError(f"{source}: invalid YAML{location}") from exc
+    except ValueError as exc:
+        raise ComposeError(f"{source}: invalid YAML scalar") from exc
+    except (OSError, UnicodeError) as exc:
+        raise ComposeError(f"Cannot read {source}: {exc.strerror if isinstance(exc, OSError) else 'invalid text encoding'}") from exc
     if not isinstance(doc, dict):
         raise ComposeError(f"{source}: expected a YAML mapping")
     services = doc.get("services")
