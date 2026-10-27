@@ -59,10 +59,10 @@ class EdgeCaseTests(unittest.TestCase):
 
     def test_unsafe_yaml_tags_rejected(self):
         with self.assertRaises(ComposeError):
-            self.scan('services:\\n  web:\\n    ports: !!python/object/apply:os.system ["echo no"]\\n')
+            self.scan('services:\n  web:\n    ports: !!python/object/apply:os.system ["echo no"]\n')
 
     def test_scan_does_not_modify_input(self):
-        original = 'services:\\n  web:\\n    ports: ["127.0.0.1:8080:80"]\\n'
+        original = 'services:\n  web:\n    ports: ["127.0.0.1:8080:80"]\n'
         self.scan(original)
         self.assertEqual(self.path.read_text(encoding="utf-8"), original)
 
